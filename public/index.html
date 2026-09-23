@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ціни на ліки — Рівне</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #1a1d21; --muted: #6b7280;
+    --accent: #0f766e; --accent-hover: #115e59; --border: #e5e7eb;
+    --err-bg: #fef2f2; --err-text: #b91c1c; --row-hover: #f0fdfa;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111418; --card: #1a1f26; --text: #e5e7eb; --muted: #9ca3af;
+      --accent: #2dd4bf; --accent-hover: #5eead4; --border: #2d3440;
+      --err-bg: #2d1a1a; --err-text: #f87171; --row-hover: #16211f;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 24px 16px 60px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .subtitle { color: var(--muted); margin: 0 0 20px; font-size: 14px; }
+  form { display: flex; gap: 8px; margin-bottom: 16px; }
+  input[type=search] {
+    flex: 1; padding: 12px 14px; font-size: 16px; border: 1px solid var(--border);
+    border-radius: 10px; background: var(--card); color: var(--text); outline: none;
+  }
+  input[type=search]:focus { border-color: var(--accent); }
+  button {
+    padding: 12px 22px; font-size: 16px; border: none; border-radius: 10px;
+    background: var(--accent); color: #fff; cursor: pointer; font-weight: 600;
+  }
+  button:hover { background: var(--accent-hover); }
+  button:disabled { opacity: .6; cursor: wait; }
+  .status { color: var(--muted); font-size: 14px; margin: 10px 2px; min-height: 20px; }
+  .errors { margin: 10px 0; display: flex; flex-wrap: wrap; gap: 6px; }
+  .err-chip {
+    background: var(--err-bg); color: var(--err-text); border-radius: 8px;
+    padding: 4px 10px; font-size: 13px;
+  }
+  .table-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    overflow-x: auto;
+  }
+  table { border-collapse: collapse; width: 100%; min-width: 720px; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { font-size: 13px; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); user-select: none; white-space: nowrap; }
+  th.sortable { cursor: pointer; }
+  th.sortable:hover { color: var(--accent); }
+  tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: var(--row-hover); }
+  td.price { font-weight: 700; white-space: nowrap; }
+  td.source { white-space: nowrap; }
+  .src-badge {
+    display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 13px;
+    background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); font-weight: 600;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .addr { color: var(--muted); font-size: 13px; }
+  .empty { padding: 40px; text-align: center; color: var(--muted); }
+  .arrow { font-size: 11px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>💊 Ціни на ліки — Рівне</h1>
+  <p class="subtitle">Пошук по аптеках: АНЦ/Копійка, Apteka911, Подорожник, Аптека Доброго Дня, Бажаємо здоров'я, Online-Apteka, Аптека D.S.</p>
+
+  <form id="searchForm">
+    <input type="search" id="q" placeholder="Назва препарату, напр. «нурофен»" autofocus autocomplete="off">
+    <button type="submit" id="btn">Шукати</button>
+  </form>
+
+  <div class="status" id="status"></div>
+  <div class="errors" id="errors"></div>
+
+  <div class="table-card" id="tableCard" hidden>
+    <table>
+      <thead>
+        <tr>
+          <th>Препарат</th>
+          <th class="sortable" id="priceHeader">Ціна <span class="arrow" id="priceArrow">▲</span></th>
+          <th>Аптека</th>
+          <th>Наявність / адреса</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+  <div class="empty" id="empty" hidden>Нічого не знайдено.</div>
+</div>
+
+<script>
+const form = document.getElementById('searchForm');
+const input = document.getElementById('q');
+const btn = document.getElementById('btn');
+const statusEl = document.getElementById('status');
+const errorsEl = document.getElementById('errors');
+const tableCard = document.getElementById('tableCard');
+const rowsEl = document.getElementById('rows');
+const emptyEl = document.getElementById('empty');
+const priceHeader = document.getElementById('priceHeader');
+const priceArrow = document.getElementById('priceArrow');
+
+let currentResults = [];
+let sortAsc = true;
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function fmtPrice(p) {
+  return (typeof p === 'number' && isFinite(p)) ? p.toFixed(2) + ' грн' : '—';
+}
+
+function render() {
+  const sorted = [...currentResults].sort((a, b) => {
+    const pa = typeof a.price === 'number' ? a.price : Infinity;
+    const pb = typeof b.price === 'number' ? b.price : Infinity;
+    return sortAsc ? pa - pb : pb - pa;
+  });
+  priceArrow.textContent = sortAsc ? '▲' : '▼';
+  rowsEl.innerHTML = sorted.map(r => `
+    <tr>
+      <td>${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.name)}</a>` : esc(r.name)}</td>
+      <td class="price">${fmtPrice(r.price)}</td>
+      <td class="source"><span class="src-badge">${esc(r.source)}</span></td>
+      <td class="addr">${esc(r.availability || '')}</td>
+    </tr>`).join('');
+  tableCard.hidden = sorted.length === 0;
+  emptyEl.hidden = sorted.length !== 0;
+}
+
+priceHeader.addEventListener('click', () => { sortAsc = !sortAsc; render(); });
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const q = input.value.trim();
+  if (q.length < 2) return;
+
+  btn.disabled = true;
+  statusEl.textContent = 'Опитую аптеки… (до 15 секунд)';
+  errorsEl.innerHTML = '';
+  tableCard.hidden = true;
+  emptyEl.hidden = true;
+
+  try {
+    const res = await fetch('/api/search?q=' + encodeURIComponent(q));
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || res.statusText);
+
+    currentResults = data.results;
+    sortAsc = true;
+    render();
+
+    statusEl.textContent = `Знайдено ${data.count} позицій за ${(data.tookMs / 1000).toFixed(1)} с`;
+    errorsEl.innerHTML = (data.errors || [])
+      .map(err => `<span class="err-chip">⚠ ${esc(err.source)}: ${esc(err.message)}</span>`)
+      .join('');
+  } catch (err) {
+    statusEl.textContent = 'Помилка: ' + err.message;
+  } finally {
+    btn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>

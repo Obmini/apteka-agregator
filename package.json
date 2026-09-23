@@ -1,0 +1,13 @@
+{
+  "name": "apteka-agregator",
+  "version": "1.0.0",
+  "description": "Локальний агрегатор цін українських аптек (м. Рівне)",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
